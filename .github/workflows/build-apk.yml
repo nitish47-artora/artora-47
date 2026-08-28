@@ -13,8 +13,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Extract ARTORA project
-        run: |
-          unzip -q artora.zip -d project
+  run: |
+    python -m zipfile -e artora.zip project
 
               - name: Find Android project
           run: |
