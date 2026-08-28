@@ -12,9 +12,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract ARTORA project
-  run: |
-    python -m zipfile -e artora.zip project
+            - name: Extract ARTORA project
+        run: |
+          mkdir -p project
+          python -m zipfile -e artora.zip project
 
               - name: Find Android project
           run: |
