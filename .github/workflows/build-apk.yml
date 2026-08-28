@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -22,7 +23,8 @@ jobs:
           mkdir -p extracted
 
           ZIP=$(find . -type f -iname "*.zip" \
-            -not -path "./.git/*" | head -n 1)
+            -not -path "./.git/*" \
+            | head -n 1)
 
           if [ -z "$ZIP" ]; then
             echo "ERROR: No ZIP file found."
@@ -35,31 +37,99 @@ jobs:
 
           echo "Searching for package.json..."
 
-          PACKAGE=$(find extracted -type f -name "package.json" \
-            -not -path "*/node_modules/*" | head -n 1)
+          PACKAGE=$(find extracted \
+            -type f \
+            -name "package.json" \
+            -not -path "*/node_modules/*" \
+            | head -n 1)
 
           if [ -z "$PACKAGE" ]; then
-            echo "ERROR: package.json not found after extraction."
-            echo "Extracted files:"
-            find extracted -maxdepth 4 -type f | head -100
+            echo "ERROR: package.json not found."
+            echo "Files found:"
+            find extracted -maxdepth 5 -type f | head -100
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$PACKAGE")
 
-          echo "ARTORA project found at: $PROJECT_DIR"
+          echo "ARTORA project found at:"
+          echo "$PROJECT_DIR"
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: ${{ env.PROJECT_DIR }}/package.json
 
       - name: Install dependencies
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: npm install
+        shell: bash
+        run: |
+          set -e
+          cd "$PROJECT_DIR"
+          npm install
 
       - name: Build ARTORA web app
-        working-directory: ${{ env.PROJECT_DIR
+        shell: bash
+        run: |
+          set -e
+          cd "$PROJECT_DIR"
+          npm run build
+
+      - name: Install Capacitor
+        shell: bash
+        run: |
+          set -e
+          cd "$PROJECT_DIR"
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+
+      - name: Create Android project
+        shell: bash
+        run: |
+          set -e
+          cd "$PROJECT_DIR"
+
+          if [ ! -d "android" ]; then
+            npx cap add android
+          else
+            echo "Android project already exists."
+          fi
+
+      - name: Sync ARTORA with Android
+        shell: bash
+        run: |
+          set -e
+          cd "$PROJECT_DIR"
+          npx cap sync android
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -e
+          cd "$PROJECT_DIR/android"
+
+          chmod +x gradlew
+
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Copy APK
+        shell: bash
+        run: |
+          set -e
+
+          cp "$PROJECT_DIR/android/app/build/outputs/apk/debug/app-debug.apk" \
+            ARTORA-APK.apk
+
+          ls -lh ARTORA-APK.apk
+
+      - name: Upload ARTORA APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARTORA-APK
+          path: ARTORA-APK.apk
