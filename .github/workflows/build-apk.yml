@@ -12,16 +12,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract ARTORA ZIP
+      - name: Extract ARTORA project
         run: |
-          rm -rf project
-          mkdir project
+          mkdir -p project
           unzip -q artora.zip -d project
 
-      - name: Extract inner ARTORA ZIP
+      - name: Find Android project
         run: |
-          mkdir -p project/artora
-          unzip -q project/artora-47-main/artora.zip -d project/artora
+          SETTINGS_FILE=$(find project -type f \( -name "settings.gradle.kts" -o -name "settings.gradle" \) -print -quit)
+
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "Android project not found"
+            find project -maxdepth 4 -type f | head -100
+            exit 1
+          fi
+
+          ANDROID_DIR=$(dirname "$SETTINGS_FILE")
+
+          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
+          echo "Android project found at: $ANDROID_DIR"
+
+      - name: Create launcher icons
+        run: |
+          mkdir -p "$ANDROID_DIR/app/src/main/res/mipmap"
+
+          cat > "$ANDROID_DIR/app/src/main/res/mipmap/ic_launcher.xml" <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path
+                  android:fillColor="#FFFFFF"
+                  android:pathData="M0,0h108v108h-108z" />
+          </vector>
+          EOF
+
+          cp "$ANDROID_DIR/app/src/main/res/mipmap/ic_launcher.xml" \
+             "$ANDROID_DIR/app/src/main/res/mipmap/ic_launcher_round.xml"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -29,19 +57,21 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
       - name: Set up Android
         uses: android-actions/setup-android@v3
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-
       - name: Build APK
         run: |
-          cd project/artora/android
+          cd "$ANDROID_DIR"
           gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ARTORA-debug-APK
-          path: project/artora/android/app/build/outputs/apk/debug/*.apk
+          path: '**/build/outputs/apk/debug/*.apk'
