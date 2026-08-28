@@ -14,39 +14,50 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find and extract ARTORA project
+      - name: Find Artora web project
         run: |
           set -e
 
-          mkdir -p project
+          APP_DIR=$(find . -type f -name "package.json" \
+            ! -path "./.git/*" \
+            ! -path "*/node_modules/*" \
+            -print -quit | xargs -r dirname)
 
-          ZIP=$(find . -maxdepth 2 -type f -iname "*.zip" \
-            ! -path "./.git/*" | head -n 1)
-
-          if [ -z "$ZIP" ]; then
-            echo "ERROR: No ZIP file found."
+          if [ -z "$APP_DIR" ]; then
+            echo "ERROR: package.json not found."
             exit 1
           fi
 
-          echo "Using ZIP: $ZIP"
-          unzip -q "$ZIP" -d project
+          echo "Artora web project found at: $APP_DIR"
+          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
 
-          echo "Extracted files:"
-          find project -maxdepth 3 -type f | head -100
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-      - name: Locate Android project
+      - name: Install web dependencies
+        working-directory: ${{ env.APP_DIR }}
+        run: npm install
+
+      - name: Build Artora web app
+        working-directory: ${{ env.APP_DIR }}
+        run: npm run build
+
+      - name: Install Capacitor
+        working-directory: ${{ env.APP_DIR }}
         run: |
-          set -e
+          npm install @capacitor/core @capacitor/cli @capacitor/android
 
-          ANDROID_DIR=$(find project -type f -name "gradlew" -print -quit | xargs -r dirname)
-
-          if [ -z "$ANDROID_DIR" ]; then
-            echo "ERROR: Android project with gradlew was not found."
-            exit 1
+      - name: Create Capacitor Android project
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          if [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.json ]; then
+            npx cap init Artora com.artora.app --web-dir=dist
           fi
 
-          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
-          echo "Android project found at: $ANDROID_DIR"
+          npx cap add android
+          npx cap copy android
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -54,17 +65,15 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Make Gradle executable
-        run: chmod +x "$ANDROID_DIR/gradlew"
-
       - name: Build APK
-        working-directory: ${{ env.ANDROID_DIR }}
-        run: ./gradlew assembleDebug --stacktrace
+        working-directory: ${{ env.APP_DIR }}/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
-      - name: Upload APK
+      - name: Upload ARTORA APK
         uses: actions/upload-artifact@v4
         with:
           name: ARTORA-APK
-          path: |
-            ${{ env.ANDROID_DIR }}/app/build/outputs/apk/debug/*.apk
+          path: ${{ env.APP_DIR }}/android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
