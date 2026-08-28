@@ -16,11 +16,11 @@ jobs:
         run: |
           unzip -q artora.zip -d project
 
-      - name: Find Android project
-        run: |
-          ANDROID_DIR=$(find project -name settings.gradle.kts -o -name settings.gradle | head -1 | xargs dirname)
-          echo "ANDROID_DIR=$ANDROID_DIR" >> $GITHUB_ENV
-          echo "Android project found at: $ANDROID_DIR"
+              - name: Find Android project
+          run: |
+            ANDROID_DIR=$(find project -type f \( -name "build.gradle.kts" -o -name "build.gradle" \) | grep "/app/" | head -1 | xargs dirname | xargs dirname)
+            echo "ANDROID_DIR=$ANDROID_DIR" >> $GITHUB_ENV
+            echo "Android project found at: $ANDROID_DIR"
 
       - name: Create launcher icons
         run: |
