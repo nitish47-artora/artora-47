@@ -22,6 +22,11 @@ jobs:
           echo "ANDROID_DIR=$ANDROID_DIR" >> $GITHUB_ENV
           echo "Android project found at: $ANDROID_DIR"
 
+      - name: Fix missing launcher icons
+        run: |
+          sed -i 's|@mipmap/ic_launcher|@drawable/ic_launcher|g' "$ANDROID_DIR/app/src/main/AndroidManifest.xml"
+          sed -i 's|@mipmap/ic_launcher_round|@drawable/ic_launcher|g' "$ANDROID_DIR/app/src/main/AndroidManifest.xml"
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
