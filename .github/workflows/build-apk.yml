@@ -15,15 +15,27 @@ jobs:
       - name: Extract ARTORA project
         run: |
           mkdir -p project
+
           unzip -q artora.zip -d project
+
+          NESTED_ZIP=$(find project -type f -name "artora.zip" -print -quit)
+
+          if [ -n "$NESTED_ZIP" ]; then
+            echo "Nested ZIP found: $NESTED_ZIP"
+            mkdir -p project/app_source
+            unzip -q "$NESTED_ZIP" -d project/app_source
+          fi
 
       - name: Find Android project
         run: |
-          SETTINGS_FILE=$(find project -type f \( -name "settings.gradle.kts" -o -name "settings.gradle" \) -print -quit)
+          SETTINGS_FILE=$(find project -type f \
+            \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
+            -print -quit)
 
           if [ -z "$SETTINGS_FILE" ]; then
-            echo "Android project not found"
-            find project -maxdepth 4 -type f | head -100
+            echo "Android project not found."
+            echo "Files found:"
+            find project -type f | head -100
             exit 1
           fi
 
