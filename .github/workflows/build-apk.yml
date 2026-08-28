@@ -14,69 +14,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find ARTORA project
-        shell: bash
+      - name: Extract ARTORA ZIP
         run: |
           set -e
+          mkdir -p project
+          ZIP=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
 
-          WEB_DIR=$(find . -type f -name "package.json" \
-            -not -path "./.git/*" \
-            -not -path "*/node_modules/*" \
-            -exec dirname {} \; | head -n 1)
-
-          if [ -z "$WEB_DIR" ]; then
-            echo "ERROR: package.json not found."
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: ARTORA ZIP not found."
             exit 1
           fi
 
-          echo "WEB_DIR=$WEB_DIR" >> "$GITHUB_ENV"
-          echo "Found project at: $WEB_DIR"
+          echo "Using ZIP: $ZIP"
+          unzip -q "$ZIP" -d project
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+          echo "Files extracted:"
+          find project -maxdepth 3 -type f | head -100
 
-      - name: Install dependencies
-        working-directory: ${{ env.WEB_DIR }}
-        run: npm install
-
-      - name: Build ARTORA
-        working-directory: ${{ env.WEB_DIR }}
-        run: npm run build
-
-      - name: Install Capacitor
-        working-directory: ${{ env.WEB_DIR }}
-        run: npm install @capacitor/core @capacitor/cli @capacitor/android
-
-      - name: Configure Capacitor
-        working-directory: ${{ env.WEB_DIR }}
+      - name: Find Android project
         run: |
-          cat > capacitor.config.ts <<'EOF'
-          import type { CapacitorConfig } from '@capacitor/cli';
+          set -e
 
-          const config: CapacitorConfig = {
-            appId: 'com.artora.app',
-            appName: 'ARTORA',
-            webDir: 'dist',
-            bundledWebRuntime: false
-          };
+          ANDROID_DIR=$(find project -type f -name "gradlew" -print -quit | xargs -r dirname)
 
-          export default config;
-          EOF
-
-      - name: Create Android project if needed
-        working-directory: ${{ env.WEB_DIR }}
-        run: |
-          if [ ! -d "android" ]; then
-            npx cap add android
-          else
-            echo "Android project already exists."
+          if [ -z "$ANDROID_DIR" ]; then
+            echo "ERROR: Android Gradle project not found inside ZIP."
+            exit 1
           fi
 
-      - name: Sync ARTORA
-        working-directory: ${{ env.WEB_DIR }}
-        run: npx cap sync android
+          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
+          echo "Android project found at: $ANDROID_DIR"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -84,13 +51,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Make Gradle executable
+        run: chmod +x "$ANDROID_DIR/gradlew"
+
       - name: Build APK
-        working-directory: ${{ env.WEB_DIR }}/android
+        working-directory: ${{ env.ANDROID_DIR }}
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ARTORA-APK
-          path: ${{ env.WEB_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.ANDROID_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
