@@ -11,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -20,42 +19,38 @@ jobs:
         run: |
           set -e
 
-          mkdir -p extracted
+          mkdir -p project
 
           ZIP=$(find . -type f -iname "*.zip" \
-            -not -path "./.git/*" \
-            | head -n 1)
+            -not -path "./.git/*" | head -n 1)
 
           if [ -z "$ZIP" ]; then
             echo "ERROR: No ZIP file found."
             exit 1
           fi
 
-          echo "Found ZIP: $ZIP"
+          echo "Using ZIP: $ZIP"
+          unzip -q "$ZIP" -d project
 
-          unzip -o "$ZIP" -d extracted
+          echo "Project files:"
+          find project -maxdepth 3 -type f | head -100
 
-          echo "Searching for package.json..."
+      - name: Locate web project
+        shell: bash
+        run: |
+          set -e
 
-          PACKAGE=$(find extracted \
-            -type f \
-            -name "package.json" \
+          WEB_DIR=$(find project -type f -name "package.json" \
             -not -path "*/node_modules/*" \
-            | head -n 1)
+            -exec dirname {} \; | head -n 1)
 
-          if [ -z "$PACKAGE" ]; then
+          if [ -z "$WEB_DIR" ]; then
             echo "ERROR: package.json not found."
-            echo "Files found:"
-            find extracted -maxdepth 5 -type f | head -100
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$PACKAGE")
-
-          echo "ARTORA project found at:"
-          echo "$PROJECT_DIR"
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "WEB_DIR=$WEB_DIR" >> "$GITHUB_ENV"
+          echo "Web project found at: $WEB_DIR"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -63,73 +58,55 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        shell: bash
-        run: |
-          set -e
-          cd "$PROJECT_DIR"
-          npm install
+        working-directory: ${{ env.WEB_DIR }}
+        run: npm install
 
       - name: Build ARTORA web app
-        shell: bash
-        run: |
-          set -e
-          cd "$PROJECT_DIR"
-          npm run build
+        working-directory: ${{ env.WEB_DIR }}
+        run: npm run build
 
       - name: Install Capacitor
-        shell: bash
+        working-directory: ${{ env.WEB_DIR }}
         run: |
-          set -e
-          cd "$PROJECT_DIR"
           npm install @capacitor/core @capacitor/cli @capacitor/android
 
-      - name: Create Android project
-        shell: bash
+      - name: Configure Capacitor
+        working-directory: ${{ env.WEB_DIR }}
         run: |
-          set -e
-          cd "$PROJECT_DIR"
+          cat > capacitor.config.ts <<'EOF'
+          import type { CapacitorConfig } from '@capacitor/cli';
 
-          if [ ! -d "android" ]; then
-            npx cap add android
-          else
-            echo "Android project already exists."
-          fi
+          const config: CapacitorConfig = {
+            appId: 'com.artora.app',
+            appName: 'ARTORA',
+            webDir: 'dist',
+            bundledWebRuntime: false
+          };
+
+          export default config;
+          EOF
+
+      - name: Create Android project
+        working-directory: ${{ env.WEB_DIR }}
+        run: npx cap add android
 
       - name: Sync ARTORA with Android
-        shell: bash
-        run: |
-          set -e
-          cd "$PROJECT_DIR"
-          npx cap sync android
+        working-directory: ${{ env.WEB_DIR }}
+        run: npx cap sync android
 
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
       - name: Build APK
-        shell: bash
-        run: |
-          set -e
-          cd "$PROJECT_DIR/android"
-
-          chmod +x gradlew
-
-          ./gradlew assembleDebug --stacktrace
-
-      - name: Copy APK
-        shell: bash
-        run: |
-          set -e
-
-          cp "$PROJECT_DIR/android/app/build/outputs/apk/debug/app-debug.apk" \
-            ARTORA-APK.apk
-
-          ls -lh ARTORA-APK.apk
+        working-directory: ${{ env.WEB_DIR }}/android
+        run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload ARTORA APK
         uses: actions/upload-artifact@v4
         with:
           name: ARTORA-APK
-          path: ARTORA-APK.apk
+          path: ${{ env.WEB_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
