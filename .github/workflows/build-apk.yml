@@ -14,33 +14,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find and extract ARTORA project
+      - name: Find ARTORA project
         shell: bash
         run: |
           set -e
 
-          mkdir -p project
-
-          ZIP=$(find . -type f -iname "*.zip" \
-            -not -path "./.git/*" | head -n 1)
-
-          if [ -z "$ZIP" ]; then
-            echo "ERROR: No ZIP file found."
-            exit 1
-          fi
-
-          echo "Using ZIP: $ZIP"
-          unzip -q "$ZIP" -d project
-
-          echo "Project files:"
-          find project -maxdepth 3 -type f | head -100
-
-      - name: Locate web project
-        shell: bash
-        run: |
-          set -e
-
-          WEB_DIR=$(find project -type f -name "package.json" \
+          WEB_DIR=$(find . -type f -name "package.json" \
+            -not -path "./.git/*" \
             -not -path "*/node_modules/*" \
             -exec dirname {} \; | head -n 1)
 
@@ -50,7 +30,7 @@ jobs:
           fi
 
           echo "WEB_DIR=$WEB_DIR" >> "$GITHUB_ENV"
-          echo "Web project found at: $WEB_DIR"
+          echo "Found project at: $WEB_DIR"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -61,14 +41,13 @@ jobs:
         working-directory: ${{ env.WEB_DIR }}
         run: npm install
 
-      - name: Build ARTORA web app
+      - name: Build ARTORA
         working-directory: ${{ env.WEB_DIR }}
         run: npm run build
 
       - name: Install Capacitor
         working-directory: ${{ env.WEB_DIR }}
-        run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/android
+        run: npm install @capacitor/core @capacitor/cli @capacitor/android
 
       - name: Configure Capacitor
         working-directory: ${{ env.WEB_DIR }}
@@ -86,15 +65,16 @@ jobs:
           export default config;
           EOF
 
-            - name: Create Android project if needed
+      - name: Create Android project if needed
         working-directory: ${{ env.WEB_DIR }}
         run: |
           if [ ! -d "android" ]; then
             npx cap add android
           else
-            echo "Android project already exists — using it."
+            echo "Android project already exists."
           fi
-      - name: Sync ARTORA with Android
+
+      - name: Sync ARTORA
         working-directory: ${{ env.WEB_DIR }}
         run: npx cap sync android
 
@@ -108,7 +88,7 @@ jobs:
         working-directory: ${{ env.WEB_DIR }}/android
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload ARTORA APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ARTORA-APK
